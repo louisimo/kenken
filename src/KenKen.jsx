@@ -207,8 +207,13 @@ function pickOp(vals, oc) {
     if (Math.abs(vals[0]-vals[1])>0)
       cs.push({op:'-', target:Math.abs(vals[0]-vals[1]),w:boost('-')});
     cs.push({op:'×', target:vals[0]*vals[1],            w:boost('×')});
-    if (mx % mn === 0)
-      cs.push({op:'÷', target:mx/mn,                    w:boost('÷')*3});
+    if (mx % mn === 0) {
+      const divTarget = mx/mn;
+      // Ban targets where only one pair exists in a 9×9 grid (trivially deducible)
+      const BANNED_DIV = new Set([2,3,4,5,7,9]);
+      if (!BANNED_DIV.has(divTarget))
+        cs.push({op:'÷', target:divTarget, w:boost('÷')*3});
+    }
   } else {
     const sum  = vals.reduce((a,b)=>a+b,0);
     const prod = vals.reduce((a,b)=>a*b,1);
@@ -361,9 +366,9 @@ export default function KenKen() {
   const [elapsed, setElapsed] = useState("00:00");
   const [wrongFlash, setWrongFlash] = useState(new Set());
   const flashTimer = useRef(null);
-  const [cageFontScale, setCageFontScale] = useState(1.0);
+  const [cageFontScale, setCageFontScale] = useState(1.5);
   const [pencilFontScale, setPencilFontScale] = useState(1.0);
-  const [pencilGridScale, setPencilGridScale] = useState(1.0);
+  const [pencilGridScale, setPencilGridScale] = useState(1.1);
 
   const [sel,    setSel]    = useState(null);
   const [selSet, setSelSet] = useState(new Set());
@@ -810,7 +815,7 @@ export default function KenKen() {
                 }}>
                   {lidx!==undefined&&(
                     <span style={{position:"absolute",top:2,left:3,fontSize:Math.max(7,Math.floor(CELL*0.22*cageFontScale)),fontWeight:700,color:T.cageLabelColor,lineHeight:1,pointerEvents:"none",whiteSpace:"nowrap",zIndex:1}}>
-                      {cg.target}{cg.op==="÷"?"/":cg.op}
+                      {String(cg.target).replace(/0/g,'𝟢')}{cg.op==="÷"?"/":cg.op}
                     </span>
                   )}
                   {pv>0&&(
@@ -896,14 +901,14 @@ export default function KenKen() {
         {/* Font size controls */}
         <div style={{display:"flex",gap:8,alignItems:"center",justifyContent:"center",flexWrap:"wrap"}}>
           {[
-            {label:"Clue",    scale:cageFontScale,   set:setCageFontScale,   min:0.5, max:1.8},
-            {label:"↔ Grid",  scale:pencilGridScale,  set:setPencilGridScale, min:0.3, max:1.2},
-            {label:"Aᵢ Font", scale:pencilFontScale,  set:setPencilFontScale, min:0.4, max:2.5},
-          ].map(({label,scale,set,min,max})=>(
+            {label:"Clue",    scale:cageFontScale,   set:setCageFontScale,   min:0.75, max:2.7,  base:1.5},
+            {label:"↔ Grid",  scale:pencilGridScale,  set:setPencilGridScale, min:0.33, max:1.32, base:1.1},
+            {label:"Aᵢ Font", scale:pencilFontScale,  set:setPencilFontScale, min:0.4,  max:2.5,  base:1.0},
+          ].map(({label,scale,set,min,max,base})=>(
             <div key={label} style={{display:"flex",alignItems:"center",gap:3}}>
               <span style={{color:T.dimText,fontSize:8.5,width:36,textAlign:"right"}}>{label}</span>
               <button onClick={()=>set(s=>+(Math.max(min,s-0.1)).toFixed(2))} style={{width:24,height:24,borderRadius:5,border:`1px solid ${T.btnBorder}`,background:T.btnBg,color:T.mutedText,fontSize:13,lineHeight:1}}>−</button>
-              <span style={{color:T.dimText,fontSize:8.5,width:26,textAlign:"center"}}>{Math.round(scale*100)}%</span>
+              <span style={{color:T.dimText,fontSize:8.5,width:26,textAlign:"center"}}>{Math.round(scale/base*100)}%</span>
               <button onClick={()=>set(s=>+(Math.min(max,s+0.1)).toFixed(2))} style={{width:24,height:24,borderRadius:5,border:`1px solid ${T.btnBorder}`,background:T.btnBg,color:T.mutedText,fontSize:13,lineHeight:1}}>+</button>
             </div>
           ))}
