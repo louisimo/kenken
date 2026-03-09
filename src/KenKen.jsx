@@ -650,7 +650,8 @@ export default function KenKen() {
 
 
   // ─── Layout ───────────────────────────────────────────────────────
-  const CELL = Math.min(54, Math.floor(Math.min(typeof window!=="undefined"?window.innerWidth-12:498,498)/N));
+  const CELL  = Math.min(54, Math.floor(Math.min(typeof window!=="undefined"?window.innerWidth-12:498,498)/N));
+  const CELL_H = Math.floor(CELL * 1.3);
   const GRIDW = CELL*N;
 
   // ═══ LOGIN ════════════════════════════════════════════════════════
@@ -799,7 +800,7 @@ export default function KenKen() {
 
               return (
                 <div key={c} onClick={()=>handleCellClick(r,c)} style={{
-                  width:CELL,height:CELL,position:"relative",
+                  width:CELL,height:CELL_H,position:"relative",
                   background:bg,display:"flex",alignItems:"center",justifyContent:"center",
                   cursor:"pointer",overflow:"hidden",
                   borderRight:cageBR?`${CAGE_LINE_W} solid ${T.cageLine}`:T.thinLine,
@@ -816,7 +817,7 @@ export default function KenKen() {
                     <span style={{fontSize:CELL>44?22:17,fontWeight:700,color:numColor,lineHeight:1,transition:"color .1s"}}>{pv}</span>
                   )}
                   {pv===0&&marks.length>0&&(()=>{
-                    const gSize    = Math.floor(CELL * 0.82 * pencilGridScale);
+                    const gSize    = Math.floor(Math.min(CELL, CELL_H) * 0.82 * pencilGridScale);
                     const cellSlot = gSize / 3;
                     const fontSize = Math.max(5, Math.min(cellSlot * 0.95, cellSlot * pencilFontScale));
                     return (
