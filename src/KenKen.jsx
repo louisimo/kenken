@@ -1,16 +1,3 @@
-// localStorage shim — drop-in replacement for window.storage used in Claude
-const storage = {
-  get: async (key) => {
-    try { const v = localStorage.getItem(key); return v !== null ? { value: v } : null; } catch { return null; }
-  },
-  set: async (key, value) => {
-    try { localStorage.setItem(key, value); return { value }; } catch { return null; }
-  },
-  delete: async (key) => {
-    try { localStorage.removeItem(key); return { deleted: true }; } catch { return null; }
-  },
-};
-
 import { useState, useMemo, useEffect, useRef } from "react";
 
 // ═══ CONSTANTS ════════════════════════════════════════════════════════════════
@@ -372,8 +359,11 @@ export default function KenKen() {
   const [mode,   setMode]   = useState("pen");
   const [won,    setWon]    = useState(false);
   const [elapsed, setElapsed] = useState("00:00");
-  const [wrongFlash, setWrongFlash] = useState(new Set()); // keys of wrong pen cells flashing red
+  const [wrongFlash, setWrongFlash] = useState(new Set());
   const flashTimer = useRef(null);
+  const [cageFontScale, setCageFontScale] = useState(1.0);
+  const [pencilFontScale, setPencilFontScale] = useState(1.0);
+  const [pencilGridScale, setPencilGridScale] = useState(1.0);
 
   const [sel,    setSel]    = useState(null);
   const [selSet, setSelSet] = useState(new Set());
@@ -428,16 +418,16 @@ export default function KenKen() {
   useEffect(()=>{ initApp(); },[]);
   async function initApp(){
     try {
-      const u=await storage.get("kenken_users").catch(()=>null);
+      const u=await window.storage.get("kenken_users",true).catch(()=>null);
       if(u) setUsers(JSON.parse(u.value));
-      const last=await storage.get("kenken_last_user").catch(()=>null);
+      const last=await window.storage.get("kenken_last_user").catch(()=>null);
       if(last){ const n=last.value; setUsername(n); setNameInput(n); if(await restoreGame(n)) setScreen("game"); }
     } catch(e){}
   }
 
   async function restoreGame(name){
     try {
-      const s=await storage.get(`kenken_game_${name}`).catch(()=>null);
+      const s=await window.storage.get(`kenken_game_${name}`).catch(()=>null);
       if(!s) return false;
       const d=JSON.parse(s.value); if(!d.puzzle) return false;
       setPuzzle(d.puzzle); setPen(d.pen||emptyPen()); setPencil(d.pencil||emptyPencil());
@@ -455,7 +445,7 @@ export default function KenKen() {
     clearTimeout(saveTimer.current);
     saveTimer.current=setTimeout(async()=>{
       if(!username) return;
-      try{ await storage.set(`kenken_game_${username}`,JSON.stringify(state)); }catch(e){}
+      try{ await window.storage.set(`kenken_game_${username}`,JSON.stringify(state)); }catch(e){}
     },600);
   }
 
@@ -466,7 +456,7 @@ export default function KenKen() {
     const nu={...clone(users)};
     if(!nu[name]) nu[name]={registered:Date.now(),completed:0,totalTime:0};
     nu[name].lastSeen=Date.now(); setUsers(nu);
-    try{ await storage.set("kenken_users",JSON.stringify(nu)); await storage.set("kenken_last_user",name); }catch(e){}
+    try{ await window.storage.set("kenken_users",JSON.stringify(nu),true); await window.storage.set("kenken_last_user",name); }catch(e){}
     const restored=await restoreGame(name);
     if(!restored) startNewGame(name);
     setScreen("game");
@@ -501,8 +491,8 @@ export default function KenKen() {
       const nu=clone(users);
       if(nu[username]){nu[username].completed++;nu[username].totalTime+=el;nu[username].lastCompleted=Date.now();}
       setUsers(nu);
-      storage.set("kenken_users",JSON.stringify(nu)).catch(()=>{});
-      storage.set(`kenken_game_${username}`,JSON.stringify({puzzle,pen,pencil,histStack:histRef.current.stack,histIdx:histRef.current.index,won:true,accum:el})).catch(()=>{});
+      window.storage.set("kenken_users",JSON.stringify(nu),true).catch(()=>{});
+      window.storage.set(`kenken_game_${username}`,JSON.stringify({puzzle,pen,pencil,histStack:histRef.current.stack,histIdx:histRef.current.index,won:true,accum:el})).catch(()=>{});
     }
   },[pen,cageStat,conflicts,puzzle,won]);
 
@@ -645,7 +635,7 @@ export default function KenKen() {
   // ─── Leaderboard ──────────────────────────────────────────────────
   async function openStats(){
     try {
-      const u=await storage.get("kenken_users").catch(()=>null);
+      const u=await window.storage.get("kenken_users",true).catch(()=>null);
       if(u){ const parsed=JSON.parse(u.value); const arr=Object.entries(parsed).map(([name,d])=>({name,completed:d.completed||0,avgTime:d.completed?Math.floor(d.totalTime/d.completed):0})).sort((a,b)=>b.completed-a.completed||a.avgTime-b.avgTime); setStatsData(arr); }
     } catch(e){}
     setScreen("stats");
@@ -765,29 +755,33 @@ export default function KenKen() {
                 <div key={c} onClick={()=>handleCellClick(r,c)} style={{
                   width:CELL,height:CELL,position:"relative",
                   background:bg,display:"flex",alignItems:"center",justifyContent:"center",
-                  cursor:"pointer",
+                  cursor:"pointer",overflow:"hidden",
                   borderRight:cageBR?`${CAGE_LINE_W} solid ${T.cageLine}`:T.thinLine,
                   borderBottom:cageBB?`${CAGE_LINE_W} solid ${T.cageLine}`:T.thinLine,
                   transition:"background .1s",
                   zIndex:0,
                 }}>
                   {lidx!==undefined&&(
-                    <span style={{position:"absolute",top:2,left:3,fontSize:Math.max(7,Math.floor(CELL*0.165)),fontWeight:700,color:T.cageLabelColor,lineHeight:1,pointerEvents:"none",whiteSpace:"nowrap",zIndex:1}}>
+                    <span style={{position:"absolute",top:2,left:3,fontSize:Math.max(7,Math.floor(CELL*0.22*cageFontScale)),fontWeight:700,color:T.cageLabelColor,lineHeight:1,pointerEvents:"none",whiteSpace:"nowrap",zIndex:1}}>
                       {cg.target}{cg.op}
                     </span>
                   )}
                   {pv>0&&(
                     <span style={{fontSize:CELL>44?22:17,fontWeight:700,color:numColor,lineHeight:1,transition:"color .1s"}}>{pv}</span>
                   )}
-                  {pv===0&&marks.length>0&&(
-                    <div style={{position:"absolute",top:CELL>48?16:13,bottom:CELL>48?4:3,left:CELL>48?4:3,right:CELL>48?4:3,display:"grid",gridTemplateColumns:"repeat(3,1fr)",gridTemplateRows:"repeat(3,1fr)"}}>
-                      {[1,2,3,4,5,6,7,8,9].map(n=>(
-                        <div key={n} style={{display:"flex",alignItems:"center",justifyContent:"center",fontSize:CELL>48?8:6,fontWeight:700,color:marks.includes(n)?T.pencilBlue:"transparent",lineHeight:1}}>
-                          {marks.includes(n)?n:""}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  {pv===0&&marks.length>0&&(()=>{
+                    const gSize = Math.floor(CELL * 0.82 * pencilGridScale);
+                    const fontSize = Math.max(5, Math.floor(CELL * 0.155 * pencilFontScale));
+                    return (
+                      <div style={{position:"absolute",bottom:2,right:2,width:gSize,height:gSize,display:"grid",gridTemplateColumns:"repeat(3,1fr)",gridTemplateRows:"repeat(3,1fr)",overflow:"hidden"}}>
+                        {[1,2,3,4,5,6,7,8,9].map(n=>(
+                          <div key={n} style={{display:"flex",alignItems:"center",justifyContent:"center",fontSize,fontWeight:700,color:marks.includes(n)?T.pencilBlue:"transparent",lineHeight:1}}>
+                            {marks.includes(n)?n:""}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}
@@ -851,10 +845,24 @@ export default function KenKen() {
           ))}
         </div>
 
-        {/* Action buttons */}
+        {/* Font size controls */}
+        <div style={{display:"flex",gap:8,alignItems:"center",justifyContent:"center",flexWrap:"wrap"}}>
+          {[
+            {label:"Clue",    scale:cageFontScale,   set:setCageFontScale,   min:0.5, max:1.8},
+            {label:"↔ Grid",  scale:pencilGridScale,  set:setPencilGridScale, min:0.3, max:1.2},
+            {label:"Aᵢ Font", scale:pencilFontScale,  set:setPencilFontScale, min:0.4, max:2.5},
+          ].map(({label,scale,set,min,max})=>(
+            <div key={label} style={{display:"flex",alignItems:"center",gap:3}}>
+              <span style={{color:T.dimText,fontSize:8.5,width:36,textAlign:"right"}}>{label}</span>
+              <button onClick={()=>set(s=>+(Math.max(min,s-0.1)).toFixed(2))} style={{width:24,height:24,borderRadius:5,border:`1px solid ${T.btnBorder}`,background:T.btnBg,color:T.mutedText,fontSize:13,lineHeight:1}}>−</button>
+              <span style={{color:T.dimText,fontSize:8.5,width:26,textAlign:"center"}}>{Math.round(scale*100)}%</span>
+              <button onClick={()=>set(s=>+(Math.min(max,s+0.1)).toFixed(2))} style={{width:24,height:24,borderRadius:5,border:`1px solid ${T.btnBorder}`,background:T.btnBg,color:T.mutedText,fontSize:13,lineHeight:1}}>+</button>
+            </div>
+          ))}
+        </div>
         <div style={{display:"flex",gap:6,justifyContent:"center",flexWrap:"wrap"}}>
           <button onClick={checkWrong} style={{padding:"6px 14px",borderRadius:6,border:`1px solid ${T.red}40`,background:`${T.red}0C`,color:T.red,fontSize:10,fontWeight:700}}>🔍 Check</button>
-          {[{l:"🏆 Board",f:openStats},{l:"🎲 New",f:()=>startNewGame(username)},{l:"👤 Switch",f:()=>setScreen("login")}].map(({l,f})=>(
+          {[{l:"🏆 Board",f:openStats},{l:"🎲 New",f:()=>startNewGame(username)}].map(({l,f})=>(
             <button key={l} onClick={f} style={{padding:"6px 12px",borderRadius:6,border:`1px solid ${T.btnBorder}`,background:"transparent",color:T.dimText,fontSize:10}}>{l}</button>
           ))}
           <button onClick={()=>setThemeName(n=>n==="dark"?"pantone":"dark")} style={{padding:"6px 12px",borderRadius:6,border:`1px solid ${T.btnBorder}`,background:"transparent",color:T.dimText,fontSize:10}}>{themeName==="dark"?"🌿 Pantone":"🌑 Dark"}</button>
