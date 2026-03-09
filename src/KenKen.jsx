@@ -77,7 +77,7 @@ const THEMES = {
 
 const FONTS = `
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,900;1,700&family=JetBrains+Mono:wght@400;600;700&display=swap');
-*{box-sizing:border-box;margin:0;padding:0;}
+*{box-sizing:border-box;margin:0;padding:0;font-feature-settings:"zero" 0;}
 button{cursor:pointer;font-family:inherit;transition:opacity .14s,transform .1s;}
 button:active:not(:disabled){transform:scale(.92);}
 button:disabled{cursor:default;opacity:.35;}
@@ -486,6 +486,7 @@ export default function KenKen() {
     if(conflicts.size>0||pen.some(r=>r.some(v=>!v))) return;
     if(puzzle.cages.every((_,i)=>cageStat[i]==="ok")){
       pauseTimer();
+      (async()=>{
       setWon(true);
       const el = Math.round(accumRef.current);
       const nu=clone(users);
@@ -493,6 +494,12 @@ export default function KenKen() {
       setUsers(nu);
       window.storage.set("kenken_users",JSON.stringify(nu),true).catch(()=>{});
       window.storage.set(`kenken_game_${username}`,JSON.stringify({puzzle,pen,pencil,histStack:histRef.current.stack,histIdx:histRef.current.index,won:true,accum:el})).catch(()=>{});
+      // Load leaderboard for win screen
+      try {
+        const u=await window.storage.get("kenken_users",true).catch(()=>null);
+        if(u){ const parsed=JSON.parse(u.value); const arr=Object.entries(parsed).map(([name,d])=>({name,completed:d.completed||0,avgTime:d.completed?Math.floor(d.totalTime/d.completed):0})).sort((a,b)=>b.completed-a.completed||a.avgTime-b.avgTime); setStatsData(arr); }
+      } catch(e){}
+      })();
     }
   },[pen,cageStat,conflicts,puzzle,won]);
 
@@ -689,7 +696,46 @@ export default function KenKen() {
     </div>
   );
 
-  // ═══ GAME — guard: generate puzzle if missing ═════════════════════
+  // ═══ WIN SCREEN ═══════════════════════════════════════════════════
+  if(screen==="game"&&won) return (
+    <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",padding:"24px 16px",fontFamily:"JetBrains Mono,monospace",animation:"fadeIn .4s ease"}}>
+      <style>{FONTS}</style>
+      {/* Trophy + title */}
+      <div style={{textAlign:"center",marginBottom:28,animation:"pop .5s cubic-bezier(.34,1.56,.64,1)"}}>
+        <div style={{fontSize:64,lineHeight:1,marginBottom:10}}>🏆</div>
+        <h1 style={{fontFamily:"Playfair Display,serif",fontSize:52,fontStyle:"italic",fontWeight:900,color:T.logoColor,margin:0}}>Solved!</h1>
+        <p style={{color:T.dimText,fontSize:10,letterSpacing:".3em",marginTop:6,textTransform:"uppercase"}}>puzzle complete</p>
+      </div>
+
+      {/* Time card */}
+      <div style={{background:T.panelBg,border:`1px solid ${T.panelBorder}`,borderRadius:14,padding:"18px 36px",textAlign:"center",marginBottom:20}}>
+        <p style={{color:T.dimText,fontSize:10,letterSpacing:".2em",textTransform:"uppercase",marginBottom:6}}>Your time</p>
+        <p style={{color:T.timerColor,fontSize:44,fontWeight:700,lineHeight:1,fontVariantNumeric:"tabular-nums"}}>{elapsed}</p>
+        <p style={{color:T.mutedText,fontSize:12,marginTop:8}}>Well played, <strong style={{color:T.accent}}>{username}</strong>!</p>
+      </div>
+
+      {/* Leaderboard */}
+      <div style={{width:"100%",maxWidth:400,background:T.panelBg,borderRadius:12,border:`1px solid ${T.panelBorder}`,overflow:"hidden",marginBottom:24}}>
+        <p style={{color:T.dimText,fontSize:9,letterSpacing:".25em",textTransform:"uppercase",padding:"10px 16px 6px",borderBottom:`1px solid ${T.panelBorder}`}}>Leaderboard</p>
+        {statsData.length===0
+          ?<p style={{color:T.dimText,textAlign:"center",padding:24,fontSize:12}}>No other players yet</p>
+          :statsData.slice(0,8).map((u,i)=>(
+            <div key={u.name} style={{display:"flex",alignItems:"center",padding:"9px 14px",borderBottom:i<Math.min(statsData.length,8)-1?`1px solid ${T.panelBorder}`:"none",background:u.name===username?`${T.accent}18`:"transparent"}}>
+              <span style={{width:20,height:20,borderRadius:"50%",flexShrink:0,marginRight:10,background:i===0?"#FFD700":i===1?"#C0C0C0":i===2?"#CD7F32":T.panelBorder,color:i<3?"#000":T.dimText,display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:700}}>{i+1}</span>
+              <span style={{flex:1,color:u.name===username?T.accent:T.numColor,fontSize:12,fontWeight:u.name===username?700:400}}>{u.name}</span>
+              <span style={{color:T.green,fontSize:11,marginRight:10,fontWeight:700}}>{u.completed}✓</span>
+              <span style={{color:T.dimText,fontSize:10}}>{u.avgTime?`${Math.floor(u.avgTime/60)}m${u.avgTime%60}s`:"—"}</span>
+            </div>
+          ))}
+      </div>
+
+      {/* Actions */}
+      <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
+        <button onClick={()=>setWon(false)} style={{padding:"11px 22px",borderRadius:7,border:`1.5px solid ${T.panelBorder}`,background:"transparent",color:T.numColor,fontSize:13}}>Review</button>
+        <button onClick={()=>startNewGame(username)} style={{padding:"11px 28px",borderRadius:7,border:"none",background:T.accent,color:T.accentText,fontSize:13,fontWeight:700}}>New Puzzle →</button>
+      </div>
+    </div>
+  );
   if (!puzzle) { startNewGame(username||"Player"); return null; }
 
   const {stack,index:histIndex}=histRef.current;
@@ -863,7 +909,7 @@ export default function KenKen() {
         </div>
         <div style={{display:"flex",gap:6,justifyContent:"center",flexWrap:"wrap"}}>
           <button onClick={checkWrong} style={{padding:"6px 14px",borderRadius:6,border:`1px solid ${T.red}40`,background:`${T.red}0C`,color:T.red,fontSize:10,fontWeight:700}}>🔍 Check</button>
-          {[{l:"🏆 Board",f:openStats},{l:"🎲 New",f:()=>startNewGame(username)}].map(({l,f})=>(
+          {[{l:"🏆 Board",f:openStats},{l:"↺ Reset",f:()=>{const ep=emptyPen(),epc=emptyPencil();setPen(ep);setPencil(epc);pushHistState(ep,epc);setSel(null);setSelSet(new Set());}},{l:"🎲 New",f:()=>startNewGame(username)}].map(({l,f})=>(
             <button key={l} onClick={f} style={{padding:"6px 12px",borderRadius:6,border:`1px solid ${T.btnBorder}`,background:"transparent",color:T.dimText,fontSize:10}}>{l}</button>
           ))}
           <button onClick={()=>setThemeName(n=>n==="dark"?"pantone":"dark")} style={{padding:"6px 12px",borderRadius:6,border:`1px solid ${T.btnBorder}`,background:"transparent",color:T.dimText,fontSize:10}}>{themeName==="dark"?"🌿 Pantone":"🌑 Dark"}</button>
@@ -875,21 +921,6 @@ export default function KenKen() {
         </p>
       </div>
 
-      {/* Win overlay */}
-      {won&&(
-        <div style={{position:"fixed",inset:0,background:themeName==="dark"?"rgba(0,0,0,.93)":"rgba(220,235,218,.96)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",zIndex:300,animation:"fadeIn .3s ease"}}>
-          <div style={{textAlign:"center",animation:"pop .45s cubic-bezier(.34,1.56,.64,1)"}}>
-            <div style={{fontSize:72,marginBottom:10}}>🏆</div>
-            <h2 style={{fontFamily:"Playfair Display,serif",fontSize:56,fontStyle:"italic",color:T.logoColor,margin:0}}>Solved!</h2>
-            <p style={{color:T.mutedText,fontSize:15,marginTop:8}}>Time · <strong style={{color:T.timerColor}}>{elapsed}</strong></p>
-            <p style={{color:T.dimText,fontSize:12,marginTop:4,marginBottom:28}}>Well played, {username}!</p>
-            <div style={{display:"flex",gap:10,justifyContent:"center"}}>
-              <button onClick={()=>setWon(false)} style={{padding:"11px 22px",borderRadius:7,border:`1.5px solid ${T.panelBorder}`,background:"transparent",color:T.numColor,fontSize:13}}>Review</button>
-              <button onClick={()=>startNewGame(username)} style={{padding:"11px 22px",borderRadius:7,border:"none",background:T.accent,color:T.accentText,fontSize:13,fontWeight:700}}>New Puzzle →</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
