@@ -968,7 +968,10 @@ export default function KenKen() {
               transition:"all .12s",
             }}>{l}</button>
           ))}
-        </div> style={{padding:"6px 14px",borderRadius:6,border:`1px solid ${T.red}40`,background:`${T.red}0C`,color:T.red,fontSize:10,fontWeight:700}}>🔍 Check</button>
+        </div>
+
+        <div style={{display:"flex",gap:6,justifyContent:"center",flexWrap:"wrap"}}>
+          <button onClick={checkWrong} style={{padding:"6px 14px",borderRadius:6,border:`1px solid ${T.red}40`,background:`${T.red}0C`,color:T.red,fontSize:10,fontWeight:700}}>🔍 Check</button>
           {[{l:"🏆 Board",f:openStats},{l:"↺ Reset",f:()=>{const ep=emptyPen(),epc=emptyPencil();setPen(ep);setPencil(epc);pushHistState(ep,epc);setSel(null);setSelSet(new Set());}},{l:"🎲 New",f:()=>startNewGame(username)}].map(({l,f})=>(
             <button key={l} onClick={f} style={{padding:"6px 12px",borderRadius:6,border:`1px solid ${T.btnBorder}`,background:"transparent",color:T.dimText,fontSize:10}}>{l}</button>
           ))}
