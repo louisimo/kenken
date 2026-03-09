@@ -770,8 +770,9 @@ export default function KenKen() {
                     <span style={{fontSize:CELL>44?22:17,fontWeight:700,color:numColor,lineHeight:1,transition:"color .1s"}}>{pv}</span>
                   )}
                   {pv===0&&marks.length>0&&(()=>{
-                    const gSize = Math.floor(CELL * 0.82 * pencilGridScale);
-                    const fontSize = Math.max(5, Math.floor(CELL * 0.155 * pencilFontScale));
+                    const gSize    = Math.floor(CELL * 0.82 * pencilGridScale);
+                    const cellSlot = gSize / 3;
+                    const fontSize = Math.max(5, Math.min(cellSlot * 0.95, cellSlot * pencilFontScale));
                     return (
                       <div style={{position:"absolute",bottom:2,right:2,width:gSize,height:gSize,display:"grid",gridTemplateColumns:"repeat(3,1fr)",gridTemplateRows:"repeat(3,1fr)",overflow:"hidden"}}>
                         {[1,2,3,4,5,6,7,8,9].map(n=>(
