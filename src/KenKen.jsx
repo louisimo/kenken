@@ -195,43 +195,41 @@ function pickType(sc) {
   return 'F';
 }
 
-// Weighted operator selection — targets ~45% ×÷ across all cages
+// Weighted operator selection — per-operator ratio targets
+// Target: × ~30%, + ~28%, - ~22%, ÷ ~12%, singles excluded from ratio
 function pickOp(vals, oc) {
   const n = vals.length;
   if (n === 1) return {op:'', target:vals[0]};
 
-  const total = Object.values(oc).reduce((a,b)=>a+b, 0);
-  const multDiv = (oc['×']||0) + (oc['÷']||0);
-  const multDivRatio = total > 0 ? multDiv / total : 0;
+  const total = (oc['+']+oc['-']+oc['×']+oc['÷']) || 1;
+  const ratio = op => (oc[op]||0) / total;
 
-  // How much we want to boost × and ÷ — increases sharply when below 45%
-  const mdBoost = multDivRatio < 0.45
-    ? 1 + (0.45 - multDivRatio) * 12
-    : Math.max(0.2, 1 - (multDivRatio - 0.45) * 6);
-
-  // How much to suppress + and - — mirrors mdBoost
-  const addSubW = multDivRatio < 0.45
-    ? Math.max(0.5, 1 - (0.45 - multDivRatio) * 6)
-    : 1 + (multDivRatio - 0.45) * 4;
+  // w(op) = target/actual — surges when underrepresented, fades when over
+  const TARGET = {'+':0.28, '-':0.22, '×':0.30, '÷':0.12};
+  const w = op => {
+    const r = ratio(op);
+    if (r === 0) return TARGET[op] * 8; // never-used ops get strong boost
+    return Math.max(0.1, TARGET[op] / r);
+  };
 
   const cs = [];
   if (n === 2) {
     const mx = Math.max(...vals), mn = Math.min(...vals);
-    cs.push({op:'+', target:vals[0]+vals[1],            w:addSubW});
-    if (Math.abs(vals[0]-vals[1])>0)
-      cs.push({op:'-', target:Math.abs(vals[0]-vals[1]), w:addSubW});
-    cs.push({op:'×', target:vals[0]*vals[1],             w:mdBoost});
+    cs.push({op:'+', target:vals[0]+vals[1],            w:w('+')});
+    if (mx !== mn)
+      cs.push({op:'-', target:mx-mn,                    w:w('-')});
+    cs.push({op:'×', target:vals[0]*vals[1],             w:w('×')});
     if (mx % mn === 0) {
       const divTarget = mx/mn;
       const BANNED_DIV = new Set([5,6,7,8,9]);
       if (!BANNED_DIV.has(divTarget))
-        cs.push({op:'÷', target:divTarget, w:mdBoost * 1.5});
+        cs.push({op:'÷', target:divTarget,               w:w('÷')*2});
     }
   } else {
     const sum  = vals.reduce((a,b)=>a+b,0);
     const prod = vals.reduce((a,b)=>a*b,1);
-    cs.push({op:'+', target:sum, w:addSubW});
-    if (prod <= 1500) cs.push({op:'×', target:prod, w:mdBoost});
+    cs.push({op:'+', target:sum,  w:w('+')});
+    if (prod <= 1500) cs.push({op:'×', target:prod, w:w('×')});
   }
   const tot = cs.reduce((s,c)=>s+c.w, 0);
   let r = Math.random()*tot;
