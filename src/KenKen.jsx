@@ -179,10 +179,10 @@ function canPlace(cells, covered, n) {
   return cells.every(([r,c]) => r>=0 && r<n && c>=0 && c<n && !covered.has(key(r,c)));
 }
 
-// Weighted cage type selection — balances H / V / L ~equally, 4-cell capped at 4
+// Weighted cage type selection — balances H / V / L ~equally, 4-cell capped at 2
 function pickType(sc) {
   const {H,V,L,F} = sc, m = H+V+L+F;
-  const allowF = F < 4;
+  const allowF = F < 2;
   const wH = Math.max(0.08, 0.35 - (m>0 ? H/m : 0));
   const wV = Math.max(0.08, 0.35 - (m>0 ? V/m : 0));
   const wL = Math.max(0.08, 0.30 - (m>0 ? L/m : 0));
@@ -195,21 +195,25 @@ function pickType(sc) {
   return 'F';
 }
 
-// Weighted operator selection — boosts ÷ and - when underrepresented
+// Weighted operator selection — boosts ÷ and - when underrepresented, caps × at 5
 function pickOp(vals, oc) {
   const n = vals.length;
   if (n === 1) return {op:'', target:vals[0]};
   const boost = op => Math.max(1, 6 - Math.max(0, (oc[op]||0) - 2));
+  // Hard cap: once we have 5 × cages, weight drops to near-zero for multi-cell
+  const multCount = oc['×'] || 0;
+  const multW = n === 2
+    ? Math.max(0.5, boost('×') * (1 - Math.max(0, multCount - 3) * 0.3))
+    : Math.max(0,   boost('×') * (1 - Math.max(0, multCount - 3) * 0.5));
   const cs = [];
   if (n === 2) {
     const mx = Math.max(...vals), mn = Math.min(...vals);
-    cs.push({op:'+', target:vals[0]+vals[1],           w:boost('+')});
+    cs.push({op:'+', target:vals[0]+vals[1],            w:boost('+')});
     if (Math.abs(vals[0]-vals[1])>0)
-      cs.push({op:'-', target:Math.abs(vals[0]-vals[1]),w:boost('-')});
-    cs.push({op:'×', target:vals[0]*vals[1],            w:boost('×')});
+      cs.push({op:'-', target:Math.abs(vals[0]-vals[1]), w:boost('-')});
+    cs.push({op:'×', target:vals[0]*vals[1],             w:multW});
     if (mx % mn === 0) {
       const divTarget = mx/mn;
-      // Ban targets where only one pair exists in a 9×9 grid (trivially deducible)
       const BANNED_DIV = new Set([5,6,7,8,9]);
       if (!BANNED_DIV.has(divTarget))
         cs.push({op:'÷', target:divTarget, w:boost('÷')*3});
@@ -217,8 +221,8 @@ function pickOp(vals, oc) {
   } else {
     const sum  = vals.reduce((a,b)=>a+b,0);
     const prod = vals.reduce((a,b)=>a*b,1);
-    cs.push({op:'+', target:sum,  w:boost('+')});
-    if (prod <= 1500) cs.push({op:'×', target:prod, w:boost('×')});
+    cs.push({op:'+', target:sum, w:boost('+')});
+    if (prod <= 1500 && multW > 0) cs.push({op:'×', target:prod, w:multW});
   }
   const tot = cs.reduce((s,c)=>s+c.w, 0);
   let r = Math.random()*tot;
@@ -311,7 +315,13 @@ function genCages(sol, n) {
           if (ni === undefined || ni === si || !cages[ni]) continue;
           const neighborSize = cages[ni].cells.length;
           if (preferSingleOnly && neighborSize !== 1) continue;
-          if (neighborSize >= 4) continue; // don't make 5+ cell cages
+          const newSize = neighborSize + 1;
+          if (newSize > 4) continue; // never exceed 4-cell
+          // Enforce 4-cell cap of 2 during merge
+          if (newSize === 4) {
+            const fourCount = cages.filter(Boolean).filter(cg => cg.cells.length === 4).length;
+            if (fourCount >= 2) continue;
+          }
           // Absorb single (si) into neighbor cage (ni)
           const newCells = [...cages[ni].cells, [r,c]];
           const vals = newCells.map(([rr,cc]) => sol[rr][cc]);
