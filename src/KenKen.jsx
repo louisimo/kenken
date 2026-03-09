@@ -763,7 +763,7 @@ export default function KenKen() {
                 }}>
                   {lidx!==undefined&&(
                     <span style={{position:"absolute",top:2,left:3,fontSize:Math.max(7,Math.floor(CELL*0.22*cageFontScale)),fontWeight:700,color:T.cageLabelColor,lineHeight:1,pointerEvents:"none",whiteSpace:"nowrap",zIndex:1}}>
-                      {cg.target}{cg.op}
+                      {cg.target}{cg.op==="÷"?"/":cg.op}
                     </span>
                   )}
                   {pv>0&&(
