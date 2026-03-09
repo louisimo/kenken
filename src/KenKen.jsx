@@ -351,21 +351,47 @@ function genCages(sol, n) {
   return cages;
 }
 
-// Public entry — retries up to 3 times to keep singles ≤ 3
-function generatePuzzle() {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const solution = genLatinSquare(N);
-    const cages    = genCages(solution, N);
-    if (cages.filter(cg => cg.cells.length === 1).length <= 3) {
-      return {id:`p_${Date.now()}`, solution, cages};
+// ─── Difficulty scorer ────────────────────────────────────────────────────
+// Returns a numeric score. Bands: Medium 0–29, Hard 30–54, Expert 55+
+function scorePuzzle(puzzle) {
+  let score = 0;
+  for (const cg of puzzle.cages) {
+    const sz = cg.cells.length;
+    if (sz === 1) { score -= 5; continue; }
+    if (cg.op === '×') {
+      score += sz === 2 ? 3 : sz === 3 ? 6 : 12;
+      if (cg.target > 100) score += 3;
+      if (cg.target > 400) score += 4;
+    } else if (cg.op === '÷') {
+      score += cg.target === 2 ? 1 : 3;
+    } else if (cg.op === '+') {
+      score += sz === 4 ? 3 : 0;
+    } else if (cg.op === '-') {
+      score += 1;
     }
   }
-  // Guaranteed fallback (rare): just return last attempt regardless
-  const solution = genLatinSquare(N);
-  return {id:`p_${Date.now()}`, solution, cages: genCages(solution, N)};
+  return score;
 }
 
-// ═══ MAIN COMPONENT ═══════════════════════════════════════════════════════════
+const DIFF_BANDS = {
+  medium: { min: -Infinity, max: 29 },
+  hard:   { min: 30,        max: 54 },
+  expert: { min: 55,        max: Infinity },
+};
+
+function generatePuzzle(difficulty = 'medium') {
+  const { min, max } = DIFF_BANDS[difficulty] || DIFF_BANDS.medium;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const solution = genLatinSquare(N);
+    const cages    = genCages(solution, N);
+    const puzzle   = { id:`p_${Date.now()}`, solution, cages };
+    const score    = scorePuzzle(puzzle);
+    if (score >= min && score <= max) return puzzle;
+  }
+  // Fallback: return whatever the last attempt gives
+  const solution = genLatinSquare(N);
+  return { id:`p_${Date.now()}`, solution, cages: genCages(solution, N) };
+}
 export default function KenKen() {
   const [screen,    setScreen]    = useState("login");
   const [nameInput, setNameInput] = useState("");
@@ -373,6 +399,7 @@ export default function KenKen() {
   const [users,     setUsers]     = useState({});
   const [statsData, setStatsData] = useState([]);
   const [themeName, setThemeName] = useState("pantone");
+  const [difficulty, setDifficulty] = useState("medium");
 
   const [puzzle, setPuzzle] = useState(null);
 
@@ -491,7 +518,7 @@ export default function KenKen() {
     setPen(ep); setPencil(epc);
     histRef.current={stack:[{pen:ep,pencil:epc}],index:0};
     setHistTick(v=>v+1); setWon(false); setSel(null); setSelSet(new Set()); pencilInputted.current=false;
-    const p = generatePuzzle();
+    const p = generatePuzzle(difficulty);
     setPuzzle(p);
     const uname = forUser || username;
     if(uname) scheduleSave({puzzle:p,pen:ep,pencil:epc,histStack:[{pen:ep,pencil:epc}],histIdx:0,won:false,accum:0});
@@ -755,7 +782,7 @@ export default function KenKen() {
       {/* Actions */}
       <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
         <button onClick={()=>setWon(false)} style={{padding:"11px 22px",borderRadius:7,border:`1.5px solid ${T.panelBorder}`,background:"transparent",color:T.numColor,fontSize:13}}>Review</button>
-        <button onClick={()=>startNewGame(username)} style={{padding:"11px 28px",borderRadius:7,border:"none",background:T.accent,color:T.accentText,fontSize:13,fontWeight:700}}>New Puzzle →</button>
+        <button onClick={()=>startNewGame(username)} style={{padding:"11px 28px",borderRadius:7,border:"none",background:T.accent,color:T.accentText,fontSize:13,fontWeight:700}}>New {difficulty.charAt(0).toUpperCase()+difficulty.slice(1)} →</button>
       </div>
     </div>
   );
@@ -830,7 +857,7 @@ export default function KenKen() {
                   transition:"background .1s",
                   zIndex:0,
                 }}>
-                  {lidx!==undefined&&(
+                  {lidx!==undefined&&!(cg.cells.length===1&&pv>0)&&(
                     <span style={{position:"absolute",top:2,left:3,fontSize:Math.max(7,Math.floor(CELL*0.22*cageFontScale)),fontWeight:700,color:T.cageLabelColor,lineHeight:1,pointerEvents:"none",whiteSpace:"nowrap",zIndex:1}}>
                       {String(cg.target).replace(/0/g,'𝟢')}{cg.op==="÷"?"/":cg.op}
                     </span>
@@ -930,8 +957,18 @@ export default function KenKen() {
             </div>
           ))}
         </div>
-        <div style={{display:"flex",gap:6,justifyContent:"center",flexWrap:"wrap"}}>
-          <button onClick={checkWrong} style={{padding:"6px 14px",borderRadius:6,border:`1px solid ${T.red}40`,background:`${T.red}0C`,color:T.red,fontSize:10,fontWeight:700}}>🔍 Check</button>
+        {/* Difficulty selector */}
+        <div style={{display:"flex",gap:5,justifyContent:"center"}}>
+          {[{k:"medium",l:"Medium"},{k:"hard",l:"Hard"},{k:"expert",l:"Expert"}].map(({k,l})=>(
+            <button key={k} onClick={()=>setDifficulty(k)} style={{
+              padding:"5px 12px",borderRadius:6,fontSize:10,fontWeight:700,
+              border:`1.5px solid ${difficulty===k?T.accent:T.btnBorder}`,
+              background:difficulty===k?`${T.accent}22`:"transparent",
+              color:difficulty===k?T.accent:T.dimText,
+              transition:"all .12s",
+            }}>{l}</button>
+          ))}
+        </div> style={{padding:"6px 14px",borderRadius:6,border:`1px solid ${T.red}40`,background:`${T.red}0C`,color:T.red,fontSize:10,fontWeight:700}}>🔍 Check</button>
           {[{l:"🏆 Board",f:openStats},{l:"↺ Reset",f:()=>{const ep=emptyPen(),epc=emptyPencil();setPen(ep);setPencil(epc);pushHistState(ep,epc);setSel(null);setSelSet(new Set());}},{l:"🎲 New",f:()=>startNewGame(username)}].map(({l,f})=>(
             <button key={l} onClick={f} style={{padding:"6px 12px",borderRadius:6,border:`1px solid ${T.btnBorder}`,background:"transparent",color:T.dimText,fontSize:10}}>{l}</button>
           ))}
