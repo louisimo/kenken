@@ -210,7 +210,7 @@ function pickOp(vals, oc) {
     if (mx % mn === 0) {
       const divTarget = mx/mn;
       // Ban targets where only one pair exists in a 9×9 grid (trivially deducible)
-      const BANNED_DIV = new Set([2,3,4,5,7,9]);
+      const BANNED_DIV = new Set([5,7,9]);
       if (!BANNED_DIV.has(divTarget))
         cs.push({op:'÷', target:divTarget, w:boost('÷')*3});
     }
