@@ -351,7 +351,36 @@ function genCages(sol, n) {
   return cages;
 }
 
-// ─── Difficulty scorer ────────────────────────────────────────────────────
+// ─── Deadly rectangle detector ────────────────────────────────────────────
+// Detects pairs of 2-cell cages that span the same two rows or columns,
+// with commutative operators — swapping their values satisfies all cage
+// constraints equally, creating multiple solutions.
+function hasDeadlyRectangle(puzzle) {
+  const sol  = puzzle.solution;
+  const c2   = puzzle.cages.filter(cg => cg.cells.length === 2);
+  for (let i = 0; i < c2.length; i++) {
+    for (let j = i + 1; j < c2.length; j++) {
+      const A = c2[i], B = c2[j];
+      const [A0, A1] = A.cells, [B0, B1] = B.cells;
+      // Only commutative ops create ambiguity (÷ is NOT commutative directionally)
+      if (!['+','-','×'].includes(A.op) || A.op !== B.op || A.target !== B.target) continue;
+      // Check same two columns (horizontal cages) or same two rows (vertical)
+      const aCols = [A0[1], A1[1]].sort((a,b)=>a-b);
+      const bCols = [B0[1], B1[1]].sort((a,b)=>a-b);
+      const aRows = [A0[0], A1[0]].sort((a,b)=>a-b);
+      const bRows = [B0[0], B1[0]].sort((a,b)=>a-b);
+      const sameColSpan = aCols[0]===bCols[0] && aCols[1]===bCols[1];
+      const sameRowSpan = aRows[0]===bRows[0] && aRows[1]===bRows[1];
+      if (!sameColSpan && !sameRowSpan) continue;
+      // Check if solution values are swappable
+      const av = A.cells.map(([r,c])=>sol[r][c]);
+      const bv = B.cells.map(([r,c])=>sol[r][c]);
+      const swappable = (av[0]===bv[1] && av[1]===bv[0]) || (av[0]===bv[0] && av[1]===bv[1]);
+      if (swappable) return true;
+    }
+  }
+  return false;
+}
 // Returns a numeric score. Bands: Medium 0–29, Hard 30–54, Expert 55+
 function scorePuzzle(puzzle) {
   let score = 0;
@@ -381,14 +410,21 @@ const DIFF_BANDS = {
 
 function generatePuzzle(difficulty = 'medium') {
   const { min, max } = DIFF_BANDS[difficulty] || DIFF_BANDS.medium;
-  for (let attempt = 0; attempt < 40; attempt++) {
+  for (let attempt = 0; attempt < 60; attempt++) {
     const solution = genLatinSquare(N);
     const cages    = genCages(solution, N);
     const puzzle   = { id:`p_${Date.now()}`, solution, cages };
+    if (hasDeadlyRectangle(puzzle)) continue;
     const score    = scorePuzzle(puzzle);
     if (score >= min && score <= max) return puzzle;
   }
-  // Fallback: return whatever the last attempt gives
+  // Fallback: return a valid puzzle ignoring difficulty band (but still no deadly rect)
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const solution = genLatinSquare(N);
+    const cages    = genCages(solution, N);
+    const puzzle   = { id:`p_${Date.now()}`, solution, cages };
+    if (!hasDeadlyRectangle(puzzle)) return puzzle;
+  }
   const solution = genLatinSquare(N);
   return { id:`p_${Date.now()}`, solution, cages: genCages(solution, N) };
 }
