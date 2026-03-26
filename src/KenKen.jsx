@@ -351,32 +351,94 @@ function genCages(sol, n) {
   return cages;
 }
 
-// ─── Deadly rectangle detector ────────────────────────────────────────────
-// Detects pairs of 2-cell cages that span the same two rows or columns,
-// with commutative operators — swapping their values satisfies all cage
-// constraints equally, creating multiple solutions.
-function hasDeadlyRectangle(puzzle) {
-  const sol  = puzzle.solution;
-  const c2   = puzzle.cages.filter(cg => cg.cells.length === 2);
-  for (let i = 0; i < c2.length; i++) {
-    for (let j = i + 1; j < c2.length; j++) {
-      const A = c2[i], B = c2[j];
-      const [A0, A1] = A.cells, [B0, B1] = B.cells;
-      // Only commutative ops create ambiguity (÷ is NOT commutative directionally)
-      if (!['+','-','×'].includes(A.op) || A.op !== B.op || A.target !== B.target) continue;
-      // Check same two columns (horizontal cages) or same two rows (vertical)
-      const aCols = [A0[1], A1[1]].sort((a,b)=>a-b);
-      const bCols = [B0[1], B1[1]].sort((a,b)=>a-b);
-      const aRows = [A0[0], A1[0]].sort((a,b)=>a-b);
-      const bRows = [B0[0], B1[0]].sort((a,b)=>a-b);
-      const sameColSpan = aCols[0]===bCols[0] && aCols[1]===bCols[1];
-      const sameRowSpan = aRows[0]===bRows[0] && aRows[1]===bRows[1];
+// ─── Swap ambiguity detector ──────────────────────────────────────────────
+// Checks ALL pairs of cages (any size) for swappable value assignments.
+// A swap is ambiguous if: swapping the values between two cages along their
+// shared row-span or col-span still satisfies both cage constraints AND
+// produces no row/col duplicates.
+function evalCageValues(op, target, vals) {
+  if (vals.length === 1) return vals[0] === target;
+  if (op === '+') return vals.reduce((a,b)=>a+b,0) === target;
+  if (op === '×') return vals.reduce((a,b)=>a*b,1) === target;
+  if (op === '-') { const s=vals.slice().sort((a,b)=>a-b); return s[s.length-1]-s.slice(0,-1).reduce((a,b)=>a+b,0)===target; }
+  if (op === '÷') { const s=vals.slice().sort((a,b)=>a-b); return s[s.length-1]/s.slice(0,-1).reduce((a,b)=>a*b,1)===target; }
+  return false;
+}
+
+function hasSwapAmbiguity(puzzle) {
+  const sol   = puzzle.solution;
+  const cages = puzzle.cages;
+  const N     = sol.length;
+
+  for (let i = 0; i < cages.length; i++) {
+    for (let j = i + 1; j < cages.length; j++) {
+      const A = cages[i], B = cages[j];
+      if (A.cells.length !== B.cells.length) continue;
+      if (A.cells.length < 2) continue;
+
+      const aRows = A.cells.map(([r])=>r);
+      const aCols = A.cells.map(([,c])=>c);
+      const bRows = B.cells.map(([r])=>r);
+      const bCols = B.cells.map(([,c])=>c);
+
+      const aRowSet = [...new Set(aRows)].sort((a,b)=>a-b);
+      const aColSet = [...new Set(aCols)].sort((a,b)=>a-b);
+      const bRowSet = [...new Set(bRows)].sort((a,b)=>a-b);
+      const bColSet = [...new Set(bCols)].sort((a,b)=>a-b);
+
+      // Try swapping along shared column span (cages in different rows, same cols)
+      const sameColSpan = aColSet.join()===bColSet.join() && aRowSet.join()!==bRowSet.join();
+      // Try swapping along shared row span (cages in different cols, same rows)
+      const sameRowSpan = aRowSet.join()===bRowSet.join() && aColSet.join()!==bColSet.join();
+
       if (!sameColSpan && !sameRowSpan) continue;
-      // Check if solution values are swappable
-      const av = A.cells.map(([r,c])=>sol[r][c]);
-      const bv = B.cells.map(([r,c])=>sol[r][c]);
-      const swappable = (av[0]===bv[1] && av[1]===bv[0]) || (av[0]===bv[0] && av[1]===bv[1]);
-      if (swappable) return true;
+
+      // Build the swap: for each cell in A, find matching cell in B by shared coord
+      // sameColSpan → match by col; sameRowSpan → match by row
+      const aVals = A.cells.map(([r,c])=>sol[r][c]);
+      const bVals = B.cells.map(([r,c])=>sol[r][c]);
+
+      // Sort both by the shared dimension to pair them up
+      const sortKey = sameColSpan
+        ? (cells) => cells.map(([r,c],k)=>({k,v:c})).sort((a,b)=>a.v-b.v).map(x=>x.k)
+        : (cells) => cells.map(([r,c],k)=>({k,v:r})).sort((a,b)=>a.v-b.v).map(x=>x.k);
+
+      const aOrder = sortKey(A.cells);
+      const bOrder = sortKey(B.cells);
+
+      const aValsSorted = aOrder.map(k=>aVals[k]);
+      const bValsSorted = bOrder.map(k=>bVals[k]);
+
+      // The swap: A gets B's values, B gets A's values (matched by shared dimension)
+      const swappedAVals = bValsSorted;
+      const swappedBVals = aValsSorted;
+
+      // Already identical → no ambiguity (would produce same solution)
+      if (aValsSorted.join()===bValsSorted.join()) continue;
+
+      // Check cage constraints still satisfied after swap
+      if (!evalCageValues(A.op, A.target, swappedAVals)) continue;
+      if (!evalCageValues(B.op, B.target, swappedBVals)) continue;
+
+      // Check no row/col duplicates introduced by the swap
+      // Build a mutated grid and validate affected rows/cols
+      const grid = sol.map(r=>[...r]);
+      aOrder.forEach((k,idx) => { const [r,c]=A.cells[k]; grid[r][c]=swappedAVals[idx]; });
+      bOrder.forEach((k,idx) => { const [r,c]=B.cells[k]; grid[r][c]=swappedBVals[idx]; });
+
+      let valid = true;
+      const affectedRows = new Set([...A.cells.map(([r])=>r),...B.cells.map(([r])=>r)]);
+      const affectedCols = new Set([...A.cells.map(([,c])=>c),...B.cells.map(([,c])=>c)]);
+      for (const r of affectedRows) {
+        if (new Set(grid[r]).size !== N) { valid=false; break; }
+      }
+      if (valid) {
+        for (const c of affectedCols) {
+          const col = grid.map(row=>row[c]);
+          if (new Set(col).size !== N) { valid=false; break; }
+        }
+      }
+      if (valid) return true; // ambiguous puzzle
     }
   }
   return false;
@@ -414,7 +476,7 @@ function generatePuzzle(difficulty = 'medium') {
     const solution = genLatinSquare(N);
     const cages    = genCages(solution, N);
     const puzzle   = { id:`p_${Date.now()}`, solution, cages };
-    if (hasDeadlyRectangle(puzzle)) continue;
+    if (hasSwapAmbiguity(puzzle)) continue;
     const score    = scorePuzzle(puzzle);
     if (score >= min && score <= max) return puzzle;
   }
@@ -423,7 +485,7 @@ function generatePuzzle(difficulty = 'medium') {
     const solution = genLatinSquare(N);
     const cages    = genCages(solution, N);
     const puzzle   = { id:`p_${Date.now()}`, solution, cages };
-    if (!hasDeadlyRectangle(puzzle)) return puzzle;
+    if (!hasSwapAmbiguity(puzzle)) return puzzle;
   }
   const solution = genLatinSquare(N);
   return { id:`p_${Date.now()}`, solution, cages: genCages(solution, N) };
